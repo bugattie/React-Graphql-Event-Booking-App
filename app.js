@@ -17,7 +17,35 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-const user = () => {};
+const events = async (eventIds) => {
+  try {
+    const events = await Event.find({ _id: { $in: eventIds } });
+    return events.map((event) => {
+      return {
+        ...event._doc,
+        _id: event.id,
+        date: new Date(event._doc.date).toISOString(),
+        creator: user.bind(this, event._doc.creator),
+      };
+    });
+  } catch (err) {
+    throw err;
+  }
+};
+
+const user = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    return {
+      ...user._doc,
+      _id: user.id,
+      password: null,
+      createdEvents: events.bind(this, user._doc.createdEvents),
+    };
+  } catch (err) {
+    throw err;
+  }
+};
 
 app.use(
   "/graphql",
@@ -68,20 +96,17 @@ app.use(
     rootValue: {
       events: async () => {
         try {
-          const result = await Event.find().populate("creator");
+          const result = await Event.find();
 
           return result.map((event) => {
             return {
               ...event._doc,
               _id: result.id,
-              creator: {
-                ...event._doc.creator._doc,
-                _id: event._doc.creator.id,
-              },
+              date: new Date(event._doc.date).toISOString(),
+              creator: user.bind(this, event._doc.creator),
             };
           });
         } catch (err) {
-          console.log(err);
           throw err;
         }
       },
@@ -96,18 +121,22 @@ app.use(
           });
           const createdEvent = await event.save();
 
-          const user = await User.findById("61f53d2993d703f9d1179913");
+          const creator = await User.findById("61f53d2993d703f9d1179913");
 
-          if (!user) {
+          if (!creator) {
             throw new Error("User not found");
           }
 
-          user.createdEvents.push(createdEvent);
-          await user.save();
+          creator.createdEvents.push(createdEvent);
+          await creator.save();
 
-          return { ...createdEvent._doc, _id: createdEvent.id };
+          return {
+            ...createdEvent._doc,
+            _id: createdEvent.id,
+            date: new Date(createdEvent._doc.date).toISOString(),
+            creator: user.bind(this, createdEvent._doc.creator),
+          };
         } catch (err) {
-          console.log(err);
           throw err;
         }
       },
@@ -124,7 +153,6 @@ app.use(
 
           return { ...result._doc, password: null, _id: result.id };
         } catch (err) {
-          console.log(err);
           throw err;
         }
       },
